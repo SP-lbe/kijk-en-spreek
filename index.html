@@ -85,7 +85,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 <div class="app">
   <section class="msg" aria-live="polite">
-    <span class="versie" id="versie">v1.3</span>
+    <span class="versie" id="versie">v1.4</span>
     <div id="tekst" class="msg-text leeg">Kies een zin, woord of letter</div>
     <div class="msg-actions">
       <button id="btn-spreek" class="act spreek">🔊 Spreek uit</button>
@@ -116,13 +116,18 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
     </ol>
     <p><b>Zinnen:</b> één keer kijken en het wordt direct uitgesproken.<br>
        <b>Woorden en letters:</b> bouw een zin op en kies dan "Spreek uit".</p>
-    <p>Hoor je geen stem? Zet de stille modus uit, zet het volume omhoog terwijl de app spreekt, en controleer bij Instellingen → Toegankelijkheid → Gesproken materiaal → Stemmen dat er een Nederlandse stem is gedownload.</p>
+    <p>Hoor je geen stem? Zet de stille modus uit, zet het volume omhoog terwijl de app spreekt, en controleer bij Instellingen → Toegankelijkheid → Lezen en spreken → Stemmen dat er een Nederlandse stem is gedownload.</p>
     <h2>Spraaktest</h2>
     <label for="stemkeuze" style="font-weight:700">Stem</label>
     <select id="stemkeuze" class="act" style="padding-inline:10px;font-size:1rem"></select>
+    <label style="display:flex;gap:10px;align-items:center"><input type="checkbox" id="stil" style="width:24px;height:24px"> Ook afspelen in stille modus</label>
     <button id="btn-test" class="act">🔊 Test spraak</button>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button id="btn-piep" class="act">🎵 Piep</button>
+      <button id="btn-kaal" class="act">Kale spraaktest</button>
+    </div>
     <div id="diag" class="diag">Tik op "Test spraak".</div>
-    <p style="color:var(--muted);margin:0">Kijk en Spreek v1.3</p>
+    <p style="color:var(--muted);margin:0">Kijk en Spreek v1.4</p>
     <button id="btn-sluit" class="act spreek">Sluiten</button>
   </div>
 </div>
@@ -144,7 +149,8 @@ let stemKeuze = "";
 try{ stemKeuze = localStorage.getItem("kes-stem") || ""; }catch(e){}
 function nlStemmen(){
   const v = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-  return v.filter(x => x.lang && x.lang.toLowerCase().startsWith("nl"));
+  const gezien = new Set();
+  return v.filter(x => x.lang && x.lang.toLowerCase().startsWith("nl") && !gezien.has(x.voiceURI) && gezien.add(x.voiceURI));
 }
 function kiesStem(){
   stemNL = stemKeuze ? (nlStemmen().find(x => x.voiceURI === stemKeuze) || null) : null;
@@ -165,7 +171,10 @@ function vulKeuze(){
 if (window.speechSynthesis){ kiesStem(); speechSynthesis.onvoiceschanged = kiesStem; }
 
 /* iOS: laat audio ook klinken als de stille modus aanstaat (Safari 17+) */
-try{ if (navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}
+let stilleModus = false;
+try{ stilleModus = localStorage.getItem("kes-stil") === "1"; }catch(e){}
+function zetSessie(){ try{ if (navigator.audioSession) navigator.audioSession.type = stilleModus ? "playback" : "auto"; }catch(e){} }
+zetSessie();
 
 let ontgrendeld = false;
 function ontgrendel(){
@@ -184,8 +193,9 @@ function spreek(s){
     const u = new SpeechSynthesisUtterance(s);
     u.lang = "nl-NL"; u.rate = 0.95; u.volume = 1;
     if (stemNL) u.voice = stemNL;
-    u.onstart = () => meld("gestart");
-    u.onend = () => meld("klaar");
+    let t0 = 0;
+    u.onstart = () => { t0 = performance.now(); meld("gestart"); };
+    u.onend = () => meld("klaar na " + (t0 ? Math.round(performance.now() - t0) : "?") + " ms");
     u.onerror = (e) => meld("fout: " + (e.error || "onbekend"));
     const bezig = speechSynthesis.speaking || speechSynthesis.pending;
     if (bezig) speechSynthesis.cancel();
@@ -267,7 +277,7 @@ function toonDiag(){
     (stemNL ? `<div style="color:var(--muted)">${stemNL.voiceURI}</div>` : "") +
     r("Geopend vanaf beginscherm", standalone ? "ja" : "nee") +
     r("Audiosessie", navigator.audioSession ? navigator.audioSession.type : "niet beschikbaar") +
-    r("Laatste spraak", laatste, laatste.startsWith("fout") ? false : laatste === "klaar" ? true : undefined) +
+    r("Laatste spraak", laatste, laatste.startsWith("fout") ? false : undefined) +
     `<div style="color:var(--muted)">${navigator.userAgent}</div>`;
 }
 document.getElementById("btn-test").addEventListener("click", () => {
@@ -275,6 +285,32 @@ document.getElementById("btn-test").addEventListener("click", () => {
   setTimeout(toonDiag, 1500); setTimeout(toonDiag, 4000);
 });
 document.getElementById("btn-hulp").addEventListener("click", () => { kiesStem(); toonDiag(); });
+const elStil = document.getElementById("stil");
+elStil.checked = stilleModus;
+elStil.addEventListener("change", () => {
+  stilleModus = elStil.checked;
+  try{ localStorage.setItem("kes-stil", stilleModus ? "1" : "0"); }catch(e){}
+  zetSessie(); toonDiag();
+});
+document.getElementById("btn-piep").addEventListener("click", () => {
+  try{
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const ac = new AC(); const o = ac.createOscillator(); const g = ac.createGain();
+    o.frequency.value = 660; g.gain.value = 0.3; o.connect(g); g.connect(ac.destination);
+    ac.resume(); o.start(); o.stop(ac.currentTime + 0.5);
+    meld("piep afgespeeld (" + ac.state + ")");
+  }catch(e){ meld("fout piep: " + e.message); }
+});
+document.getElementById("btn-kaal").addEventListener("click", () => {
+  try{
+    const u = new SpeechSynthesisUtterance("Hallo, dit is een test.");
+    let t0 = 0;
+    u.onstart = () => { t0 = performance.now(); meld("kaal gestart"); };
+    u.onend = () => meld("kaal klaar na " + (t0 ? Math.round(performance.now() - t0) : "?") + " ms");
+    u.onerror = (e) => meld("fout kaal: " + (e.error || "onbekend"));
+    speechSynthesis.speak(u);
+  }catch(e){ meld("fout kaal: " + e.message); }
+});
 document.getElementById("stemkeuze").addEventListener("change", (e) => {
   stemKeuze = e.target.value;
   try{ localStorage.setItem("kes-stem", stemKeuze); }catch(err){}

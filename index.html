@@ -74,11 +74,18 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 .hulp h2{margin:0;font-size:1.5rem}
 .hulp ol{margin:0;padding-left:1.3em;display:grid;gap:6px}
 .hulp .act{width:100%}
+.msg{position:relative}
+.versie{position:absolute;right:10px;top:6px;font-size:.75rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.diag{background:var(--surface);border:2px solid var(--line);border-radius:12px;padding:10px 12px;
+  font-size:.95rem;line-height:1.45;display:grid;gap:2px;overflow-wrap:anywhere}
+.diag b{font-weight:700}
+.ok{color:var(--yes)} .fout{color:var(--no)}
 @media (prefers-reduced-motion:reduce){.key{transition:none}}
 </style>
 
 <div class="app">
   <section class="msg" aria-live="polite">
+    <span class="versie" id="versie">v1.2</span>
     <div id="tekst" class="msg-text leeg">Kies een zin, woord of letter</div>
     <div class="msg-actions">
       <button id="btn-spreek" class="act spreek">🔊 Spreek uit</button>
@@ -110,6 +117,10 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
     <p><b>Zinnen:</b> één keer kijken en het wordt direct uitgesproken.<br>
        <b>Woorden en letters:</b> bouw een zin op en kies dan "Spreek uit".</p>
     <p>Hoor je geen stem? Zet de stille modus uit, zet het volume omhoog terwijl de app spreekt, en controleer bij Instellingen → Toegankelijkheid → Gesproken materiaal → Stemmen dat er een Nederlandse stem is gedownload.</p>
+    <h2>Spraaktest</h2>
+    <button id="btn-test" class="act">🔊 Test spraak</button>
+    <div id="diag" class="diag">Tik op "Test spraak".</div>
+    <p style="color:var(--muted);margin:0">Kijk en Spreek v1.2</p>
     <button id="btn-sluit" class="act spreek">Sluiten</button>
   </div>
 </div>
@@ -152,6 +163,9 @@ function spreek(s){
     const u = new SpeechSynthesisUtterance(s);
     u.lang = "nl-NL"; u.rate = 0.95; u.volume = 1;
     if (stemNL) u.voice = stemNL;
+    u.onstart = () => meld("gestart");
+    u.onend = () => meld("klaar");
+    u.onerror = (e) => meld("fout: " + (e.error || "onbekend"));
     const bezig = speechSynthesis.speaking || speechSynthesis.pending;
     if (bezig) speechSynthesis.cancel();
     speechSynthesis.resume();
@@ -214,6 +228,31 @@ document.getElementById("btn-wis").addEventListener("click", () => { tekst = "";
 const hulp = document.getElementById("hulp");
 document.getElementById("btn-hulp").addEventListener("click", () => { hulp.hidden = false; });
 document.getElementById("btn-sluit").addEventListener("click", () => { hulp.hidden = true; });
+
+let laatste = "nog niets uitgesproken";
+function meld(s){ laatste = s; if (!hulp.hidden) toonDiag(); }
+function toonDiag(){
+  const d = document.getElementById("diag");
+  const ss = !!window.speechSynthesis;
+  const v = ss ? speechSynthesis.getVoices() : [];
+  const nl = v.filter(x => x.lang && x.lang.toLowerCase().startsWith("nl"));
+  const standalone = (window.navigator.standalone === true) || matchMedia("(display-mode: standalone)").matches;
+  const r = (k, w, goed) => `<div>${k}: <b class="${goed===undefined?"":goed?"ok":"fout"}">${w}</b></div>`;
+  d.innerHTML =
+    r("Spraak in browser", ss ? "ja" : "nee", ss) +
+    r("Aantal stemmen", v.length, v.length > 0) +
+    r("Nederlandse stemmen", nl.length ? nl.map(x => x.name).join(", ") : "geen", nl.length > 0) +
+    r("Gekozen stem", stemNL ? stemNL.name + " (" + stemNL.lang + ")" : "standaard", !!stemNL) +
+    r("Geopend vanaf beginscherm", standalone ? "ja" : "nee") +
+    r("Audiosessie", navigator.audioSession ? navigator.audioSession.type : "niet beschikbaar") +
+    r("Laatste spraak", laatste, laatste.startsWith("fout") ? false : laatste === "klaar" ? true : undefined) +
+    `<div style="color:var(--muted)">${navigator.userAgent}</div>`;
+}
+document.getElementById("btn-test").addEventListener("click", () => {
+  meld("bezig…"); kiesStem(); spreek("Dit is een test van de spraak."); toonDiag();
+  setTimeout(toonDiag, 1500); setTimeout(toonDiag, 4000);
+});
+document.getElementById("btn-hulp").addEventListener("click", toonDiag);
 
 let start = "zinnen";
 try{ start = localStorage.getItem("kes-tab") || "zinnen"; }catch(e){}

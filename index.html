@@ -109,7 +109,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
     </ol>
     <p><b>Zinnen:</b> één keer kijken en het wordt direct uitgesproken.<br>
        <b>Woorden en letters:</b> bouw een zin op en kies dan "Spreek uit".</p>
-    <p>Hoor je geen stem? Zet het geluid van de telefoon aan (de stille-modusknop).</p>
+    <p>Hoor je geen stem? Zet de stille modus uit, zet het volume omhoog terwijl de app spreekt, en controleer bij Instellingen → Toegankelijkheid → Gesproken materiaal → Stemmen dat er een Nederlandse stem is gedownload.</p>
     <button id="btn-sluit" class="act spreek">Sluiten</button>
   </div>
 </div>
@@ -132,14 +132,32 @@ function kiesStem(){
 }
 if (window.speechSynthesis){ kiesStem(); speechSynthesis.onvoiceschanged = kiesStem; }
 
+/* iOS: laat audio ook klinken als de stille modus aanstaat (Safari 17+) */
+try{ if (navigator.audioSession) navigator.audioSession.type = "playback"; }catch(e){}
+
+let ontgrendeld = false;
+function ontgrendel(){
+  /* iOS geeft spraak pas vrij na een eerste aanraking: spreek een lege zin */
+  if (ontgrendeld || !window.speechSynthesis) return;
+  ontgrendeld = true;
+  try{ const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }catch(e){}
+}
+document.addEventListener("touchend", ontgrendel, {once:true});
+document.addEventListener("click", ontgrendel, {once:true});
+
 function spreek(s){
   if (!s || !window.speechSynthesis) return;
   try{
-    speechSynthesis.cancel();
+    if (!stemNL) kiesStem();
     const u = new SpeechSynthesisUtterance(s);
-    u.lang = "nl-NL"; u.rate = 0.95;
+    u.lang = "nl-NL"; u.rate = 0.95; u.volume = 1;
     if (stemNL) u.voice = stemNL;
-    speechSynthesis.speak(u);
+    const bezig = speechSynthesis.speaking || speechSynthesis.pending;
+    if (bezig) speechSynthesis.cancel();
+    speechSynthesis.resume();
+    /* iOS slikt een speak() die direct na cancel() komt: kort wachten */
+    if (bezig) setTimeout(() => speechSynthesis.speak(u), 120);
+    else speechSynthesis.speak(u);
   }catch(e){}
 }
 

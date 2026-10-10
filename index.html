@@ -85,7 +85,7 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
 
 <div class="app">
   <section class="msg" aria-live="polite">
-    <span class="versie" id="versie">v1.2</span>
+    <span class="versie" id="versie">v1.3</span>
     <div id="tekst" class="msg-text leeg">Kies een zin, woord of letter</div>
     <div class="msg-actions">
       <button id="btn-spreek" class="act spreek">🔊 Spreek uit</button>
@@ -118,9 +118,11 @@ button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
        <b>Woorden en letters:</b> bouw een zin op en kies dan "Spreek uit".</p>
     <p>Hoor je geen stem? Zet de stille modus uit, zet het volume omhoog terwijl de app spreekt, en controleer bij Instellingen → Toegankelijkheid → Gesproken materiaal → Stemmen dat er een Nederlandse stem is gedownload.</p>
     <h2>Spraaktest</h2>
+    <label for="stemkeuze" style="font-weight:700">Stem</label>
+    <select id="stemkeuze" class="act" style="padding-inline:10px;font-size:1rem"></select>
     <button id="btn-test" class="act">🔊 Test spraak</button>
     <div id="diag" class="diag">Tik op "Test spraak".</div>
-    <p style="color:var(--muted);margin:0">Kijk en Spreek v1.2</p>
+    <p style="color:var(--muted);margin:0">Kijk en Spreek v1.3</p>
     <button id="btn-sluit" class="act spreek">Sluiten</button>
   </div>
 </div>
@@ -137,9 +139,28 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 let tekst = "";
 let stemNL = null;
 
-function kiesStem(){
+/* Standaard: geen stem forceren, iOS kiest zelf (voorkomt een niet-gedownloade stem) */
+let stemKeuze = "";
+try{ stemKeuze = localStorage.getItem("kes-stem") || ""; }catch(e){}
+function nlStemmen(){
   const v = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-  stemNL = v.find(x => x.lang === "nl-NL") || v.find(x => x.lang && x.lang.startsWith("nl")) || null;
+  return v.filter(x => x.lang && x.lang.toLowerCase().startsWith("nl"));
+}
+function kiesStem(){
+  stemNL = stemKeuze ? (nlStemmen().find(x => x.voiceURI === stemKeuze) || null) : null;
+  vulKeuze();
+}
+function vulKeuze(){
+  const sel = document.getElementById("stemkeuze");
+  if (!sel) return;
+  const opties = [`<option value="">Automatisch (aanbevolen)</option>`].concat(
+    nlStemmen().map(x => {
+      const soort = /premium/i.test(x.voiceURI) ? "premium" : /enhanced/i.test(x.voiceURI) ? "verbeterd" : /compact/i.test(x.voiceURI) ? "compact" : "";
+      const label = x.name + " (" + x.lang + (soort ? ", " + soort : "") + ")";
+      return `<option value="${x.voiceURI.replace(/"/g,"&quot;")}">${label}</option>`;
+    }));
+  sel.innerHTML = opties.join("");
+  sel.value = stemKeuze;
 }
 if (window.speechSynthesis){ kiesStem(); speechSynthesis.onvoiceschanged = kiesStem; }
 
@@ -242,7 +263,8 @@ function toonDiag(){
     r("Spraak in browser", ss ? "ja" : "nee", ss) +
     r("Aantal stemmen", v.length, v.length > 0) +
     r("Nederlandse stemmen", nl.length ? nl.map(x => x.name).join(", ") : "geen", nl.length > 0) +
-    r("Gekozen stem", stemNL ? stemNL.name + " (" + stemNL.lang + ")" : "standaard", !!stemNL) +
+    r("Gekozen stem", stemNL ? stemNL.name + " (" + stemNL.lang + ")" : "automatisch (iOS kiest)") +
+    (stemNL ? `<div style="color:var(--muted)">${stemNL.voiceURI}</div>` : "") +
     r("Geopend vanaf beginscherm", standalone ? "ja" : "nee") +
     r("Audiosessie", navigator.audioSession ? navigator.audioSession.type : "niet beschikbaar") +
     r("Laatste spraak", laatste, laatste.startsWith("fout") ? false : laatste === "klaar" ? true : undefined) +
@@ -252,7 +274,12 @@ document.getElementById("btn-test").addEventListener("click", () => {
   meld("bezig…"); kiesStem(); spreek("Dit is een test van de spraak."); toonDiag();
   setTimeout(toonDiag, 1500); setTimeout(toonDiag, 4000);
 });
-document.getElementById("btn-hulp").addEventListener("click", toonDiag);
+document.getElementById("btn-hulp").addEventListener("click", () => { kiesStem(); toonDiag(); });
+document.getElementById("stemkeuze").addEventListener("change", (e) => {
+  stemKeuze = e.target.value;
+  try{ localStorage.setItem("kes-stem", stemKeuze); }catch(err){}
+  kiesStem(); toonDiag();
+});
 
 let start = "zinnen";
 try{ start = localStorage.getItem("kes-tab") || "zinnen"; }catch(e){}

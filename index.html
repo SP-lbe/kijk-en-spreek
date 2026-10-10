@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kijk en Spreek">
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);box-sizing:border-box;height:100%}body{margin:0;font:14px system-ui,sans-serif}[hidden]{display:none!important}</style>
+<title>Kijk en Spreek</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+</head>
+<body>
+<style>
+/* Layout: één scherm zonder scrollen — berichtbalk, tabs, raster dat de rest vult */
+:root{
+  --bg:#eef2f4; --surface:#ffffff; --ink:#132a38; --muted:#5a6d78;
+  --accent:#0f6e74; --accent-ink:#ffffff; --line:#cfd9de; --flash:#ffd65a;
+  --yes:#1d7a45; --no:#a23b2a;
+  --font:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1a21; --surface:#17262f; --ink:#e8f0f3; --muted:#93a7b1;
+  --accent:#3fb3b8; --accent-ink:#06191b; --line:#2a3d48; --flash:#c9a227;
+  --yes:#4fbf7d; --no:#e07a66; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1a21; --surface:#17262f; --ink:#e8f0f3; --muted:#93a7b1;
+  --accent:#3fb3b8; --accent-ink:#06191b; --line:#2a3d48; --flash:#c9a227;
+  --yes:#4fbf7d; --no:#e07a66; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font);
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+*{box-sizing:border-box}
+button{font-family:inherit;color:inherit;touch-action:manipulation;cursor:pointer}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.app{height:100%;display:grid;grid-template-rows:auto auto 1fr;gap:10px;
+  padding-inline:12px;padding-block:10px;max-width:640px;margin:0 auto}
+
+.msg{background:var(--surface);border:2px solid var(--line);border-radius:14px;
+  padding:10px 12px;display:grid;gap:8px}
+.msg-text{font-size:1.6rem;font-weight:700;line-height:1.2;min-height:2.4em;
+  overflow-wrap:anywhere;max-height:4.8em;overflow-y:auto}
+.msg-text.leeg{color:var(--muted);font-weight:400;font-size:1.1rem}
+.msg-actions{display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px}
+.act{min-height:56px;border-radius:12px;border:2px solid var(--line);
+  background:var(--bg);font-size:1.1rem;font-weight:700}
+.act.spreek{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.tabs{display:grid;grid-template-columns:repeat(3,1fr) auto;gap:8px}
+.tab{min-height:50px;border-radius:12px;border:2px solid var(--line);
+  background:var(--surface);font-size:1.05rem;font-weight:700}
+.tab[aria-selected="true"]{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.tab.help{padding-inline:16px;font-size:1.2rem}
+
+.grid{display:grid;gap:8px;grid-auto-rows:1fr;min-height:0}
+.grid.zinnen{grid-template-columns:repeat(2,1fr)}
+.grid.woorden{grid-template-columns:repeat(3,1fr)}
+.grid.letters{grid-template-columns:repeat(4,1fr)}
+.key{border-radius:14px;border:2px solid var(--line);background:var(--surface);
+  font-weight:700;padding:4px 6px;min-height:0;line-height:1.15;
+  transition:background-color .25s}
+.zinnen .key{font-size:1.15rem}
+.woorden .key{font-size:1.2rem}
+.letters .key{font-size:1.9rem}
+.key.ja{color:var(--yes);border-color:var(--yes);font-size:1.6rem}
+.key.nee{color:var(--no);border-color:var(--no);font-size:1.6rem}
+.key.flash{background:var(--flash);transition:none}
+.key.functie{font-size:1.1rem;background:var(--bg)}
+
+.hulp{position:fixed;inset:0;background:var(--bg);overflow-y:auto;
+  padding-inline:20px;padding-block:calc(env(safe-area-inset-top,0px) + 20px) 30px;z-index:5}
+.hulp-in{max-width:34rem;margin:0 auto;display:grid;gap:12px;font-size:1.05rem;line-height:1.5}
+.hulp h2{margin:0;font-size:1.5rem}
+.hulp ol{margin:0;padding-left:1.3em;display:grid;gap:6px}
+.hulp .act{width:100%}
+@media (prefers-reduced-motion:reduce){.key{transition:none}}
+</style>
+
+<div class="app">
+  <section class="msg" aria-live="polite">
+    <div id="tekst" class="msg-text leeg">Kies een zin, woord of letter</div>
+    <div class="msg-actions">
+      <button id="btn-spreek" class="act spreek">🔊 Spreek uit</button>
+      <button id="btn-terug" class="act">⌫ Terug</button>
+      <button id="btn-wis" class="act">Wis</button>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="zinnen" id="tab-zinnen">Zinnen</button>
+    <button class="tab" role="tab" data-tab="woorden" id="tab-woorden">Woorden</button>
+    <button class="tab" role="tab" data-tab="letters" id="tab-letters">Letters</button>
+    <button class="tab help" id="btn-hulp" aria-label="Uitleg">?</button>
+  </nav>
+
+  <main id="raster" class="grid"></main>
+</div>
+
+<div id="hulp" class="hulp" hidden>
+  <div class="hulp-in">
+    <h2>Oogbesturing aanzetten</h2>
+    <ol>
+      <li>Instellingen → Toegankelijkheid → Oogtracking → aan.</li>
+      <li>Volg de kalibratie: kijk naar de stippen.</li>
+      <li>Zet de telefoon stil neer, op ±30–45 cm van het gezicht, bijvoorbeeld in een standaard.</li>
+      <li>Kijk naar een knop en blijf even kijken: dan "tikt" iOS hem aan (Vasthouden).</li>
+      <li>Langer of korter kijken stel je in bij Oogtracking → Vasthoudtijd.</li>
+    </ol>
+    <p><b>Zinnen:</b> één keer kijken en het wordt direct uitgesproken.<br>
+       <b>Woorden en letters:</b> bouw een zin op en kies dan "Spreek uit".</p>
+    <p>Hoor je geen stem? Zet het geluid van de telefoon aan (de stille-modusknop).</p>
+    <button id="btn-sluit" class="act spreek">Sluiten</button>
+  </div>
+</div>
+
+<script>
+const ZINNEN = ["Ja","Nee","Ik heb dorst","Ik heb pijn","Ik ben moe","Wil je me helpen?",
+  "Ik moet naar het toilet","Ik wil anders liggen","Ik heb het koud","Ik heb het warm",
+  "Wacht even","Ik wil iets zeggen","Dank je wel","Ik hou van je"];
+const WOORDEN = ["ik","jij","wil","niet","graag","help","water","eten","pijn",
+  "toilet","bed","stoel","koud","warm","moe","nu","straks","slapen",
+  "ja","nee","dank je","tv","telefoon","bril"];
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+let tekst = "";
+let stemNL = null;
+
+function kiesStem(){
+  const v = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
+  stemNL = v.find(x => x.lang === "nl-NL") || v.find(x => x.lang && x.lang.startsWith("nl")) || null;
+}
+if (window.speechSynthesis){ kiesStem(); speechSynthesis.onvoiceschanged = kiesStem; }
+
+function spreek(s){
+  if (!s || !window.speechSynthesis) return;
+  try{
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(s);
+    u.lang = "nl-NL"; u.rate = 0.95;
+    if (stemNL) u.voice = stemNL;
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+const elTekst = document.getElementById("tekst");
+function toon(){
+  if (tekst.trim()){ elTekst.textContent = tekst; elTekst.classList.remove("leeg"); }
+  else { elTekst.textContent = "Kies een zin, woord of letter"; elTekst.classList.add("leeg"); }
+  elTekst.scrollTop = elTekst.scrollHeight;
+}
+
+function flits(b){ b.classList.add("flash"); setTimeout(()=>b.classList.remove("flash"),300); }
+
+function voegToe(woord){
+  tekst = tekst && !tekst.endsWith(" ") ? tekst + " " + woord : tekst + woord;
+}
+
+const raster = document.getElementById("raster");
+function bouw(tab){
+  raster.className = "grid " + tab;
+  raster.innerHTML = "";
+  const knop = (label, fn, cls) => {
+    const b = document.createElement("button");
+    b.className = "key" + (cls ? " " + cls : "");
+    b.textContent = label;
+    b.addEventListener("click", () => { flits(b); fn(); });
+    raster.appendChild(b);
+  };
+  if (tab === "zinnen"){
+    ZINNEN.forEach(z => knop(z, () => { tekst = z; toon(); spreek(z); },
+      z === "Ja" ? "ja" : z === "Nee" ? "nee" : ""));
+  } else if (tab === "woorden"){
+    WOORDEN.forEach(w => knop(w, () => { voegToe(w); toon(); }));
+  } else {
+    LETTERS.forEach(l => knop(l, () => { tekst += l; toon(); }));
+    knop("spatie", () => { if (tekst && !tekst.endsWith(" ")) tekst += " "; toon(); }, "functie");
+    knop("⌫", () => { tekst = tekst.slice(0,-1); toon(); }, "functie");
+  }
+  document.querySelectorAll(".tab[data-tab]").forEach(t =>
+    t.setAttribute("aria-selected", t.dataset.tab === tab ? "true" : "false"));
+  try{ localStorage.setItem("kes-tab", tab); }catch(e){}
+}
+
+document.querySelectorAll(".tab[data-tab]").forEach(t =>
+  t.addEventListener("click", () => bouw(t.dataset.tab)));
+
+document.getElementById("btn-spreek").addEventListener("click", () => spreek(tekst.trim()));
+document.getElementById("btn-terug").addEventListener("click", () => {
+  const huidige = raster.classList.contains("letters");
+  tekst = huidige ? tekst.slice(0,-1) : tekst.trimEnd().replace(/\S+$/,"").trimEnd();
+  toon();
+});
+document.getElementById("btn-wis").addEventListener("click", () => { tekst = ""; toon(); });
+
+const hulp = document.getElementById("hulp");
+document.getElementById("btn-hulp").addEventListener("click", () => { hulp.hidden = false; });
+document.getElementById("btn-sluit").addEventListener("click", () => { hulp.hidden = true; });
+
+let start = "zinnen";
+try{ start = localStorage.getItem("kes-tab") || "zinnen"; }catch(e){}
+if (!["zinnen","woorden","letters"].includes(start)) start = "zinnen";
+bouw(start);
+toon();
+</script>
+
+</body>
+</html>
